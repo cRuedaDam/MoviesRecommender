@@ -31,7 +31,7 @@ def load_and_preprocess_data():
     # Preprocesar datos
     metadata, tfidf_matrix = preprocess_data(metadata, links)
     if metadata is None or tfidf_matrix is None:
-        st.error("Error al preprocesar los datos.")
+        st.error("Error al preprocesar los datos.") 
         return None, None, None
     
     st.write("Datos cargados y preprocesados.")
@@ -71,7 +71,7 @@ if submit_button:
 
                 # Obtener recomendaciones
                 content_recs = content_based_recommender(movie_title, metadata, n_recommendations=10, tfidf_matrix=tfidf_matrix)
-                collab_recs = collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, input_title=movie_title, tfidf_matrix=tfidf_matrix)
+                collab_recs = collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, input_title=movie_title)
 
                 # Mostrar información de la película seleccionada
                 movie_info = metadata[metadata['title'] == movie_title][['title', 'release_year', 'genres_list']].iloc[0]
@@ -94,14 +94,13 @@ if submit_button:
 
                 # Mostrar recomendaciones colaborativas
                 st.subheader("A otros usuarios también les gustó:")
-                collab_df = pd.DataFrame(collab_recs, columns=['Título', 'Relevancia (%)'])
-                collab_df['Relevancia (%)'] = collab_df['Relevancia (%)'].round(2)
+                collab_df = pd.DataFrame(collab_recs, columns=['Título', 'Nota media'])
                 st.dataframe(
                     collab_df,
                     use_container_width=True,
                     column_config={
                         "Título": st.column_config.TextColumn("Título"),
-                        "Relevancia (%)": st.column_config.NumberColumn("Relevancia (%)", format="%.2f")
+                        "Nota media": st.column_config.NumberColumn("Nota media", format="%.2f")
                     }
                 )
             except Exception as e:
