@@ -72,7 +72,12 @@ def collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, 
     top_predictions = scored_predictions[:n_recommendations]
 
     recommendations = []
-    for movie_id, _ in top_predictions:
+    rated_movie_ids = set(ratings[ratings['userId'] == user_id]['movieId'])  # Películas ya vistas
+
+    for movie_id, final_score in top_predictions:
+        if movie_id in rated_movie_ids:
+            continue  # Saltar películas ya vistas
+
         row = metadata[metadata['movieId'] == movie_id]
         if not row.empty:
             title = row['title'].iloc[0]
@@ -80,7 +85,6 @@ def collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, 
             recommendations.append((title, round(vote_avg, 2)))
 
     recommendations = add_diversity(recommendations, metadata, n_recommendations)
-
     recommendations.sort(key=lambda x: x[1], reverse=True)
 
     print(f"Tiempo de ejecución de Collaborative: {time.time() - start_time:.2f} segundos")

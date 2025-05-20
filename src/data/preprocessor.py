@@ -3,6 +3,12 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 import ast
 import time
+import sys
+import os
+
+# Agregar el directorio raíz para importaciones
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from src.recommenders.utils import get_poster_url
 
 def parse_genres(genres_str):
     """
@@ -94,4 +100,21 @@ def preprocess_data(metadata, links):
     
     end_time = time.time()
     print(f"Tiempo de carga y preprocesamiento: {end_time - start_time:.2f} segundos")
+
+    # Limpieza y verificación de posters
+    metadata['poster_url'] = metadata['poster_path'].apply(
+        lambda x: get_poster_url(x, verify=False) 
+    )
+    
+    # Marcar posters válidos
+    metadata['has_valid_poster'] = metadata['poster_url'].apply(
+        lambda x: not x.endswith('Poster+no+disponible')
+    )
+    
+    print(f"Posters válidos: {metadata['has_valid_poster'].sum()}/{len(metadata)}")
+
+    print(metadata['poster_path'].isna().sum())
+    print(metadata['poster_path'].head(10))
+    print(metadata[['title', 'poster_path', 'poster_url']].sample(5))
+    
     return metadata, tfidf_matrix

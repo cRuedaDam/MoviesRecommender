@@ -58,3 +58,36 @@ def add_diversity(recommendations, metadata, n_recommendations):
     # Mezclar para evitar sesgo de orden
     random.shuffle(selected)
     return selected[:n_recommendations]
+
+def get_poster_url(poster_path, width=500, verify=True):
+    """
+    Obtiene la URL del poster con validación robusta
+    
+    Args:
+        poster_path (str): Ruta relativa del poster en TMDB.
+        width (int): Ancho deseado para la imagen. Default: 500.
+        verify (bool): Si es True, verifica disponibilidad. Default: True.
+        
+    Returns:
+        str: URL completa del poster o URL del placeholder si no es válido.
+    """
+    base_url = "https://image.tmdb.org/t/p/"
+    placeholder = "https://via.placeholder.com/300x450?text=Poster+no+disponible"
+    
+    # Validación exhaustiva del path
+    if (not poster_path or 
+        not isinstance(poster_path, str) or 
+        str(poster_path).strip().lower() in ('nan', 'none', 'null', '') or
+        len(str(poster_path).strip()) < 5):
+        return placeholder
+    
+    clean_path = str(poster_path).strip()
+    
+    # Asegurar formato correcto
+    if not clean_path.startswith('/'):
+        clean_path = '/' + clean_path
+    
+    if not clean_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+        return placeholder
+    
+    return f"{base_url}w{width}{clean_path}"
