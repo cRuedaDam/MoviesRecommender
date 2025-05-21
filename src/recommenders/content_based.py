@@ -20,10 +20,11 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
     """
     start_time = time.time()
     
-    # Validar entrada
+    # Validar que el título de entrada sea una cadena no vacía
     if not isinstance(input_title, str) or not input_title.strip():
         raise ValueError("El título de entrada debe ser una cadena no vacía.")
     
+    # Comprobar si el título está en el dataset; si no, buscar título similar
     if input_title not in metadata['title'].values:
         closest_title = find_movie_title(input_title, metadata['title'].values)
         if closest_title:
@@ -32,7 +33,7 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
         else:
             raise ValueError(f"No se puede generar recomendaciones para '{input_title}' porque no se encontró en el dataset.")
     
-    # Obtener información de la película de entrada
+    # Obtener índice y metadatos relevantes de la película de entrada
     movie_idx = metadata[metadata['title'] == input_title].index[0]
     movie_id = metadata.loc[movie_idx, 'movieId']
     movie_genres = set(metadata.loc[movie_idx, 'genres_list'])
@@ -40,17 +41,17 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
     movie_language = metadata.loc[movie_idx, 'original_language']
     movie_collection = metadata.loc[movie_idx, 'belongs_to_collection']
     
-    # Imprimir información de la película
+    # Mostrar información básica de la película de entrada
     print(f"Película de entrada: {input_title}, Año: {movie_year}, Géneros: {', '.join(movie_genres)}")
     
-    # Calcular similitud coseno
+    # Calcular similitud coseno entre la película de entrada y todas las demás usando la matriz TF-IDF
     cosine_similarities = linear_kernel(tfidf_matrix[movie_idx:movie_idx+1], tfidf_matrix).flatten()
     
-    # Crear un DataFrame para manejar las similitudes
+    # Crear DataFrame para manejar todas las películas con su similitud y metadatos necesarios
     similarity_df = pd.DataFrame({
         'index': range(len(cosine_similarities)),
         'title': metadata['title'],
-        'similarity': cosine_similarities * 100,  # Convertir a porcentaje
+        'similarity': cosine_similarities * 100,  # Convertir similitud a porcentaje para mejor interpretación
         'genres_list': metadata['genres_list'],
         'vote_count': metadata['vote_count'],
         'vote_average': metadata['vote_average'],
@@ -59,58 +60,58 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
         'original_language': metadata['original_language']
     })
     
-    # Filtrar la película de entrada
+    # Excluir la película de entrada del listado de recomendaciones
     filtered_df = similarity_df[similarity_df['title'] != input_title].copy()
     
-    # 1. Factor de colección (prioridad máxima si pertenecen a la misma saga)
+    # 1. Factor colección: Priorizar películas que pertenezcan a la misma saga/colección
     filtered_df['collection_match'] = filtered_df['belongs_to_collection'].apply(
         lambda x: 1 if pd.notna(x) and pd.notna(movie_collection) and x == movie_collection else 0
     )
     
-    # 2. Factor de similitud de género (0-1) - MEJORADO
+    # 2. Factor similitud de género: Proporción de géneros en común respecto a la película de entrada
     filtered_df['genre_match'] = filtered_df['genres_list'].apply(
         lambda x: len(set(x).intersection(movie_genres)) / max(len(movie_genres), 1)
     )
     
-    # 3. Factor de coincidencia exacta de género principal (0-1)
+    # 3. Factor coincidencia género principal: Si el género principal coincide, asignar 1, sino 0
     main_genre = next(iter(movie_genres), None) if movie_genres else None
     filtered_df['main_genre_match'] = filtered_df['genres_list'].apply(
         lambda x: 1 if main_genre and main_genre in x else 0
     )
     
-    # 4. Factor de cercanía temporal (0-1)
-    MAX_YEAR_DIFF = 10  # Más estricto para mayor relevancia
+    # 4. Factor proximidad temporal: Más cercanía en años da un factor más alto (0 a 1)
+    MAX_YEAR_DIFF = 10  # Diferencia máxima de años para considerar proximidad
     filtered_df['year_proximity'] = filtered_df['release_year'].apply(
         lambda x: max(0, 1 - abs(x - movie_year) / MAX_YEAR_DIFF) if pd.notna(x) and pd.notna(movie_year) else 0.2
     )
-
-    # 5. Factor de idioma (0-1)
+    
+    # 5. Factor idioma: Preferencia a películas en el mismo idioma original
     filtered_df['language_match'] = filtered_df['original_language'].apply(
         lambda x: 1 if x == movie_language else 0.2
     )
     
-    # 6. Factor de popularidad (0-1)
+    # 6. Factor popularidad: Popularidad basada en votos, normalizada y suavizada para evitar 0
     max_votes = filtered_df['vote_count'].max()
     filtered_df['popularity_factor'] = filtered_df['vote_count'].apply(
         lambda x: 0.2 + 0.8 * (np.log1p(x) / np.log1p(max_votes)) if x > 0 else 0.2
     )
     
-    # 7. Factor de calificación (0-1)
+    # 7. Factor calificación: Calificación promedio, normalizada entre 0.2 y 1
     filtered_df['rating_factor'] = filtered_df['vote_average'].apply(
         lambda x: 0.2 + 0.8 * (x / 10) if x > 0 else 0.2
     )
     
-    # Ajustar pesos (priorizando colección y género)
-    SIMILARITY_WEIGHT = 0.3    # Reducido para dar más peso a otros factores
-    COLLECTION_WEIGHT = 0.15   # Peso alto para películas de la misma saga
-    GENRE_WEIGHT = 0.1         # Aumentado para mejor matching de géneros
-    MAIN_GENRE_WEIGHT = 0.15   # Peso adicional para género principal
+    # Pesos para combinar los factores en un solo score, priorizando colección y género
+    SIMILARITY_WEIGHT = 0.3
+    COLLECTION_WEIGHT = 0.15
+    GENRE_WEIGHT = 0.1
+    MAIN_GENRE_WEIGHT = 0.15
     YEAR_WEIGHT = 0.05
     LANGUAGE_WEIGHT = 0.05
     POPULARITY_WEIGHT = 0.1
     RATING_WEIGHT = 0.05
     
-    # Calcular score combinado
+    # Calcular score combinado para ranking final
     filtered_df['combined_score'] = (
         SIMILARITY_WEIGHT * filtered_df['similarity'] + 
         COLLECTION_WEIGHT * (filtered_df['collection_match'] * 100) +
@@ -122,16 +123,16 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
         RATING_WEIGHT * (filtered_df['rating_factor'] * 100)
     )
     
-    # Ordenar primero por colección, luego por coincidencia de género principal, luego por puntuación
+    # Ordenar por colección (desc), género principal (desc) y score combinado (desc) para mayor relevancia
     sorted_df = filtered_df.sort_values(
         ['collection_match', 'main_genre_match', 'combined_score'], 
         ascending=[False, False, False]
     )
     
-    # Seleccionar las top n recomendaciones
+    # Seleccionar las top n películas recomendadas según el ranking
     top_recommendations = sorted_df.head(n_recommendations)
     
-    # Convertir a formato de lista de tuplas (título, similitud)
+    # Convertir las recomendaciones a lista de tuplas (título, score combinado)
     recommendations = list(zip(top_recommendations['title'], top_recommendations['combined_score']))
     
     print(f"Tiempo de ejecución de Content Based: {time.time() - start_time:.2f} segundos")

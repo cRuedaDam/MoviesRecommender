@@ -1,7 +1,3 @@
-import os
-import sys
-# Agregar el directorio raíz del proyecto al PYTHONPATH
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import requests
 import pandas as pd
 import streamlit as st
@@ -9,9 +5,9 @@ from src.data.loader import load_data
 from src.data.preprocessor import preprocess_data
 from src.recommenders.content_based import content_based_recommender
 from src.recommenders.collaborative import collaborative_recommender
-from src.recommenders.utils import get_poster_url  # Importar desde el módulo utils
+from src.recommenders.utils import get_poster_url  # Función auxiliar para obtener URL del póster
 
-# Configuración de la página
+# Configura la interfaz de usuario de Streamlit
 st.set_page_config(
     page_title="Recomendador de Películas",
     page_icon="🎬",
@@ -19,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados
+# Inyección de estilos personalizados en la interfaz Streamlit
 st.markdown("""
 <style>
 .poster {
@@ -66,21 +62,33 @@ st.markdown("""
 
 @st.cache_data
 def load_and_preprocess_data():
-    """Carga y preprocesa los datos con manejo de errores"""
+    """
+    Carga los datos desde los archivos fuente y aplica el preprocesamiento necesario.
+
+    Retorna:
+        metadata (DataFrame): información de las películas.
+        ratings (DataFrame): valoraciones de los usuarios.
+        tfidf_matrix (sparse matrix): matriz TF-IDF para similitud de contenido.
+    """
     try:
         with st.spinner("Cargando datos, por favor espere..."):
+            # Carga los datos desde los archivos CSV en la carpeta 'dataset'
             metadata, ratings, links = load_data(data_folder='dataset')
             
+            # Validación de carga exitosa
             if metadata is None or ratings is None or links is None:
                 st.error("Error crítico: No se pudieron cargar los archivos de datos.")
                 return None, None, None
             
+            # Preprocesamiento y vectorización de metadatos
             metadata, tfidf_matrix = preprocess_data(metadata, links)
             
+            # Validación de preprocesamiento exitoso
             if metadata is None or tfidf_matrix is None:
                 st.error("Error crítico: Fallo en el preprocesamiento de datos.")
                 return None, None, None
             
+            # Asegura la existencia de una columna para validar disponibilidad del póster
             if 'has_valid_poster' not in metadata.columns:
                 metadata['has_valid_poster'] = False
             
@@ -91,7 +99,12 @@ def load_and_preprocess_data():
         return None, None, None
 
 def display_movie_info(movie_info):
-    """Muestra la información detallada de una película"""
+    """
+    Muestra detalles de una película seleccionada.
+
+    Argumentos:
+        movie_info (Series): contiene la información de la película, como título, póster, año, géneros y descripción.
+    """
     col1, col2 = st.columns([1, 3])
     with col1:
         st.image(
@@ -110,7 +123,15 @@ def display_movie_info(movie_info):
         """)
 
 def display_movie_cards(recommendations, metadata, title="Películas Recomendadas", is_collaborative=False):
-    """Muestra las recomendaciones en formato de tarjetas"""
+    """
+    Presenta una lista de películas recomendadas en formato de tarjetas visuales.
+
+    Argumentos:
+        recommendations (list): lista de tuplas (título, puntuación).
+        metadata (DataFrame): datos de las películas.
+        title (str): título del bloque de recomendaciones.
+        is_collaborative (bool): define si el origen es colaborativo o basado en contenido.
+    """
     st.subheader(title)
     cols = st.columns(5)
     
@@ -132,17 +153,18 @@ def display_movie_cards(recommendations, metadata, title="Películas Recomendada
         except Exception as e:
             st.error(f"Error al mostrar {movie_title}: {str(e)}")
 
-# Carga de datos
+# Carga inicial de datos
 metadata, ratings, tfidf_matrix = load_and_preprocess_data()
 
+# Interrumpe la ejecución si no se pudieron cargar los datos
 if metadata is None:
     st.stop()
 
-# Contenido principal
-st.title("🎬 Recomendador de Películas")
+# Encabezado de la aplicación
+st.title("🎬  Recomendador de Películas")
 st.markdown("Descubre películas similares basadas en contenido y preferencias de usuarios.")
 
-# Formulario de búsqueda
+# Formulario para seleccionar película e ingresar ID de usuario
 with st.form(key="recommendation_form"):
     st.subheader("Buscar recomendaciones")
     col1, col2 = st.columns([3, 1])
@@ -163,17 +185,18 @@ with st.form(key="recommendation_form"):
         )
     submitted = st.form_submit_button("Obtener recomendaciones")
 
-# Procesamiento de recomendaciones
+# Procesamiento cuando el usuario envía el formulario
 if submitted:
     with st.spinner("Generando recomendaciones..."):
         try:
+            # Información de la película seleccionada
             movie_info = metadata[metadata['title'] == movie_title].iloc[0]
             
-            st.subheader(f"🎥 {movie_title}", divider="blue")
+            st.subheader(f"🎥  {movie_title}", divider="blue")
             display_movie_info(movie_info)
             
             # Recomendaciones basadas en contenido
-            st.subheader("🍿 Recomendaciones basadas en contenido", divider="blue")
+            st.subheader("🍿  Recomendaciones basadas en contenido", divider="blue")
             content_recs = content_based_recommender(
                 movie_title, 
                 metadata, 
@@ -189,8 +212,8 @@ if submitted:
                     hide_index=True
                 )
 
-            # Recomendaciones colaborativas
-            st.subheader("👥 También les gustó a usuarios similares", divider="blue")
+            # Recomendaciones basadas en comportamiento de usuarios
+            st.subheader("👥  También les gustó a usuarios similares", divider="blue")
             collab_recs = collaborative_recommender(
                 user_id, 
                 ratings, 
