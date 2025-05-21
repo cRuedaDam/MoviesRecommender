@@ -5,6 +5,8 @@ import ast
 import time
 import sys
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Agregar el directorio raíz para importaciones
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))

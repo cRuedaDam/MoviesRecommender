@@ -51,10 +51,11 @@ st.markdown("""
     margin: 10px 0 5px 0;
     font-weight: bold;
     font-size: 14px;
+    color: #f0f0f0;
 }
 .movie-similarity {
     font-size: 13px;
-    color: #aaa;
+    color: #f0f0f0;
     margin: 0;
 }
 .selectbox-container {
@@ -101,14 +102,14 @@ def display_movie_info(movie_info):
         )
     with col2:
         st.markdown(f"""
-        **Año:** {movie_info.get('release_year', 'N/A')}  
+        **Año:** {int(movie_info['release_year']) if pd.notnull(movie_info.get('release_year')) else 'N/A'}  
         **Géneros:** {', '.join(movie_info.get('genres_list', []))}  
         **Calificación:** {movie_info.get('vote_average', 'N/A')}/10 ⭐  
         **Descripción:**  
         {movie_info.get('overview', 'No hay descripción disponible.')}
         """)
 
-def display_movie_cards(recommendations, metadata, title="Películas Recomendadas"):
+def display_movie_cards(recommendations, metadata, title="Películas Recomendadas", is_collaborative=False):
     """Muestra las recomendaciones en formato de tarjetas"""
     st.subheader(title)
     cols = st.columns(5)
@@ -116,6 +117,7 @@ def display_movie_cards(recommendations, metadata, title="Películas Recomendada
     for idx, (movie_title, score) in enumerate(recommendations[:10]):
         try:
             movie_info = metadata[metadata['title'] == movie_title].iloc[0]
+            score_display = f"{score:.2f}/10 ⭐" if is_collaborative else f"Similitud: {score:.2f}%"
             with cols[idx % 5]:
                 st.markdown(f"""
                 <div class="movie-card">
@@ -123,7 +125,7 @@ def display_movie_cards(recommendations, metadata, title="Películas Recomendada
                         <img src="{movie_info['poster_url']}" class="poster"
                              onerror="this.src='https://via.placeholder.com/300x450?text=Poster+no+disponible'; this.onerror=null;">
                         <div class="movie-title" title="{movie_title}">{movie_title}</div>
-                        <div class="movie-similarity">Similitud: {score:.2f}%</div>
+                        <div class="movie-similarity">{score_display}</div>
                     </center>
                 </div>
                 """, unsafe_allow_html=True)
@@ -170,6 +172,7 @@ if submitted:
             st.subheader(f"🎥 {movie_title}", divider="blue")
             display_movie_info(movie_info)
             
+            # Recomendaciones basadas en contenido
             st.subheader("🍿 Recomendaciones basadas en contenido", divider="blue")
             content_recs = content_based_recommender(
                 movie_title, 
@@ -178,14 +181,15 @@ if submitted:
                 tfidf_matrix=tfidf_matrix
             )
             display_movie_cards(content_recs, metadata)
-            
-            with st.expander("📊 Ver detalles técnicos"):
+
+            with st.expander("📊 Ver detalles técnicos (contenido)"):
                 st.dataframe(
                     pd.DataFrame(content_recs, columns=['Título', 'Similitud (%)']),
                     use_container_width=True,
                     hide_index=True
                 )
-            
+
+            # Recomendaciones colaborativas
             st.subheader("👥 También les gustó a usuarios similares", divider="blue")
             collab_recs = collaborative_recommender(
                 user_id, 
@@ -194,13 +198,15 @@ if submitted:
                 n_recommendations=10, 
                 input_title=movie_title
             )
-            st.dataframe(
-                pd.DataFrame(collab_recs, columns=['Título', 'Puntuación media']),
-                use_container_width=True,
-                hide_index=True
-            )
-            
+            display_movie_cards(collab_recs, metadata, title="", is_collaborative=True)
+
+            with st.expander("📊 Ver detalles técnicos (colaborativo)"):
+                st.dataframe(
+                    pd.DataFrame(collab_recs, columns=['Título', 'Puntuación media']),
+                    use_container_width=True,
+                    hide_index=True
+                )
+
         except Exception as e:
             st.error(f"Error al generar recomendaciones: {str(e)}")
             st.error("Por favor intenta con otra película o reinicia la aplicación.")
-

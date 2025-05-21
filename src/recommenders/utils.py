@@ -59,7 +59,7 @@ def add_diversity(recommendations, metadata, n_recommendations):
     random.shuffle(selected)
     return selected[:n_recommendations]
 
-def get_poster_url(poster_path, width=500, verify=True):
+def get_poster_url(poster_path, width=342, verify=True):
     """
     Obtiene la URL del poster con validación robusta
     
