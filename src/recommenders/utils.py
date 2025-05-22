@@ -9,7 +9,7 @@ import random
 load_dotenv()
 
 # Configuración de la API de TMDB
-TMDB_API_KEY = os.getenv("TMDB_API_KEY", "a5a6289ec4bde4a1fcba8f6d49580f71")
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE_URL = "https://www.themoviedb.org/t/p/"
 
