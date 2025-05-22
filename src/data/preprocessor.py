@@ -45,6 +45,14 @@ def preprocess_data(metadata, links):
     """
     start_time = time.time()
 
+    # Eliminar duplicados basados en imdb_id
+    metadata = metadata.drop_duplicates(subset='imdb_id', keep='first')
+    print(f"Filas después de eliminar duplicados: {len(metadata)}")
+
+    # Eliminar filas con título nulo
+    metadata = metadata.dropna(subset=['title'])
+    print(f"Filas después de eliminar títulos nulos: {len(metadata)}")
+
     # Filtrado y tipado de IDs
     metadata = metadata[metadata['id'].apply(lambda x: str(x).isdigit())].copy()
     metadata['id'] = metadata['id'].astype(int)
