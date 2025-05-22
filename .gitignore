@@ -1,3 +1,5 @@
-__pycache__/
+*/_pycache_/*
+/_pycache_/
+_pycache_
 .env
 poster_urls_cache.csv
