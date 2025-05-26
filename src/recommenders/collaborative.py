@@ -5,73 +5,10 @@ import numpy as np
 import pandas as pd
 import time
 import re
-from src.recommenders.utils import find_movie_title, add_diversity
-
-def find_movie_improved(input_title, metadata, verbose=True):
-    """
-    Busca una película en el dataset 'metadata' usando diferentes estrategias:
-    1) búsqueda exacta, 
-    2) búsqueda eliminando el año en el título,
-    3) búsqueda por coincidencia parcial en el título,
-    4) búsqueda por palabras clave largas.
-    Retorna el ID de la película si se encuentra, o None si no.
-    """
-    if not input_title or input_title.strip() == "":
-        if verbose:
-            print("Título de entrada vacío")
-        return None
-    
-    # Normalización del título para facilitar comparaciones
-    input_title_norm = input_title.lower().strip()
-    
-    # 1. Búsqueda exacta del título (ignora mayúsculas/minúsculas)
-    exact_match = metadata[metadata['title'].str.lower() == input_title_norm]
-    if not exact_match.empty:
-        movie_id = exact_match.iloc[0]['movieId']
-        if verbose:
-            print(f"Coincidencia exacta encontrada para '{input_title}': {exact_match.iloc[0]['title']} (ID: {movie_id})")
-        return movie_id
-    
-    # 2. Búsqueda eliminando el año del título (p. ej. "Movie (1999)" -> "Movie")
-    def remove_year(title):
-        return re.sub(r"\s*\(\d{4}\)\s*$", "", title).lower()
-    
-    titles_no_year = metadata['title'].apply(remove_year)
-    year_matches = metadata[titles_no_year == input_title_norm]
-    if not year_matches.empty:
-        movie_id = year_matches.iloc[0]['movieId']
-        if verbose:
-            print(f"Coincidencia sin año encontrada para '{input_title}': {year_matches.iloc[0]['title']} (ID: {movie_id})")
-        return movie_id
-    
-    # 3. Búsqueda por coincidencia parcial dentro del título
-    contains_matches = metadata[metadata['title'].str.lower().str.contains(input_title_norm, regex=False)]
-    if not contains_matches.empty:
-        # Ordena resultados por promedio de votos y cantidad de votos (descendente)
-        sorted_matches = contains_matches.sort_values(by=['vote_average', 'vote_count'], ascending=False)
-        movie_id = sorted_matches.iloc[0]['movieId']
-        if verbose:
-            print(f"Coincidencia parcial encontrada para '{input_title}': {sorted_matches.iloc[0]['title']} (ID: {movie_id})")
-        return movie_id
-    
-    # 4. Búsqueda por palabras clave del título (ignorando palabras cortas)
-    keywords = input_title_norm.split()
-    if len(keywords) > 0:
-        for keyword in keywords:
-            if len(keyword) > 3:
-                matches = metadata[metadata['title'].str.lower().str.contains(keyword)]
-                if not matches.empty:
-                    sorted_matches = matches.sort_values(by=['vote_average', 'vote_count'], ascending=False)
-                    movie_id = sorted_matches.iloc[0]['movieId']
-                    if verbose:
-                        print(f"Coincidencia por palabra clave '{keyword}' encontrada para '{input_title}': {sorted_matches.iloc[0]['title']} (ID: {movie_id})")
-                    return movie_id
-    
-    # Si ninguna búsqueda encontró coincidencia
-    if verbose:
-        print(f"No se encontró ninguna coincidencia para '{input_title}'")
-    return None
-
+from src.recommenders.utils import find_movie_title, find_movie_improved, add_diversity
+from sklearn.model_selection import train_test_split
+from collections import defaultdict
+import numpy as np
 
 def collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, input_title=None, tfidf_matrix=None):
     """
@@ -105,6 +42,7 @@ def collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, 
     # Identificación del ID de la película de entrada, si se proporciona
     input_movie_id = None
     input_movie_title = None
+    
     if input_title:
         input_movie_id = find_movie_improved(input_title, metadata)
         
@@ -118,9 +56,11 @@ def collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, 
     
     # Creación del modelo KNN para encontrar usuarios similares basados en rating
     try:
-        k = min(30, len(user_ids) - 1)  # Número máximo de vecinos similares
+        k = min(20, len(user_ids) - 1)  # Número máximo de vecinos similares
         knn_model = NearestNeighbors(n_neighbors=k+1, metric='cosine')  # +1 incluye el propio usuario
         knn_model.fit(user_item_sparse)
+
+        print(f"El numero (K) de vecinos definido es {k}")
         
         # Obtener índices y distancias de vecinos más cercanos
         distances, indices = knn_model.kneighbors(user_item_sparse[user_index].reshape(1, -1))
@@ -218,3 +158,69 @@ def collaborative_recommender(user_id, ratings, metadata, n_recommendations=10, 
     except Exception as e:
         print(f"Error en el recomendador colaborativo: {str(e)}")
         raise e
+
+def evaluate_model(model_fn, ratings, metadata, k=10, test_size=0.2, n_users=100):
+    """
+    Evalúa un sistema de recomendación con métricas top-k.
+
+    Parámetros:
+    - model_fn: función recomendadora, debe aceptar (user_id, ratings, metadata, n_recommendations).
+    - ratings: DataFrame original con ratings.
+    - metadata: DataFrame con metadata de películas.
+    - k: número de recomendaciones a considerar.
+    - test_size: proporción de ratings a usar como test.
+    - n_users: número de usuarios aleatorios a evaluar.
+
+    Retorna:
+    - Diccionario con métricas promedio: Precision@k, Recall@k y NDCG@k.
+    """
+    # Dividir los datos en entrenamiento y prueba
+    train_data, test_data = train_test_split(ratings, test_size=test_size, random_state=42)
+    
+    # Construir conjuntos de prueba por usuario
+    test_ratings_by_user = test_data.groupby('userId')['movieId'].apply(set).to_dict()
+    
+    # Evaluar sobre una muestra de usuarios
+    user_sample = np.random.choice(list(test_ratings_by_user.keys()), size=min(n_users, len(test_ratings_by_user)), replace=False)
+
+    precision_list = []
+    recall_list = []
+    ndcg_list = []
+
+    for user_id in user_sample:
+        relevant_items = test_ratings_by_user[user_id]
+        if not relevant_items:
+            continue  # saltar si no hay test ratings
+        
+        try:
+            recommendations = model_fn(user_id, train_data, metadata, n_recommendations=k)
+            recommended_titles = [title for title, _ in recommendations]
+            
+            # Mapear títulos recomendados a IDs
+            recommended_ids = metadata[metadata['title'].isin(recommended_titles)]['movieId'].values
+            
+            hits = len(set(recommended_ids) & relevant_items)
+            precision = hits / k
+            recall = hits / len(relevant_items)
+            
+            # NDCG
+            dcg = 0.0
+            idcg = sum([1.0 / np.log2(i + 2) for i in range(min(len(relevant_items), k))])
+            for i, rec_id in enumerate(recommended_ids):
+                if rec_id in relevant_items:
+                    dcg += 1.0 / np.log2(i + 2)
+            ndcg = dcg / idcg if idcg > 0 else 0.0
+            
+            precision_list.append(precision)
+            recall_list.append(recall)
+            ndcg_list.append(ndcg)
+
+        except Exception as e:
+            print(f"Error al evaluar usuario {user_id}: {e}")
+            continue
+
+    return {
+        'Precision@K': np.mean(precision_list),
+        'Recall@K': np.mean(recall_list),
+        'NDCG@K': np.mean(ndcg_list)
+    }

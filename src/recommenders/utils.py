@@ -83,6 +83,72 @@ def find_movie_title(movie_id, metadata):
     movie = metadata[metadata['movieId'] == movie_id]
     return movie['title'].iloc[0] if not movie.empty else None
 
+def find_movie_improved(input_title, metadata, verbose=True):
+    """
+    Busca una película en el dataset 'metadata' usando diferentes estrategias:
+    1) búsqueda exacta, 
+    2) búsqueda eliminando el año en el título,
+    3) búsqueda por coincidencia parcial en el título,
+    4) búsqueda por palabras clave largas.
+    Retorna el ID de la película si se encuentra, o None si no.
+    """
+    if not input_title or input_title.strip() == "":
+        if verbose:
+            print("Título de entrada vacío")
+        return None
+    
+    # Normalización del título para facilitar comparaciones
+    input_title_norm = input_title.lower().strip()
+    
+    # 1. Búsqueda exacta del título (ignora mayúsculas/minúsculas)
+    exact_match = metadata[metadata['title'].str.lower() == input_title_norm]
+    if not exact_match.empty:
+        movie_id = exact_match.iloc[0]['movieId']
+        if verbose:
+            print(f"Coincidencia exacta encontrada para '{input_title}': {exact_match.iloc[0]['title']} (ID: {movie_id})")
+        return movie_id
+    
+    # 2. Búsqueda eliminando el año del título (p. ej. "Movie (1999)" -> "Movie")
+    def remove_year(title):
+        return re.sub(r"\s*\(\d{4}\)\s*$", "", title).lower()
+    
+    titles_no_year = metadata['title'].apply(remove_year)
+    year_matches = metadata[titles_no_year == input_title_norm]
+    if not year_matches.empty:
+        movie_id = year_matches.iloc[0]['movieId']
+        if verbose:
+            print(f"Coincidencia sin año encontrada para '{input_title}': {year_matches.iloc[0]['title']} (ID: {movie_id})")
+        return movie_id
+    
+    # 3. Búsqueda por coincidencia parcial dentro del título
+    contains_matches = metadata[metadata['title'].str.lower().str.contains(input_title_norm, regex=False)]
+    if not contains_matches.empty:
+        # Ordena resultados por promedio de votos y cantidad de votos (descendente)
+        sorted_matches = contains_matches.sort_values(by=['vote_average', 'vote_count'], ascending=False)
+        movie_id = sorted_matches.iloc[0]['movieId']
+        if verbose:
+            print(f"Coincidencia parcial encontrada para '{input_title}': {sorted_matches.iloc[0]['title']} (ID: {movie_id})")
+        return movie_id
+    
+    # 4. Búsqueda por palabras clave del título (ignorando palabras cortas)
+    keywords = input_title_norm.split()
+    if len(keywords) > 0:
+        for keyword in keywords:
+            if len(keyword) > 3:
+                matches = metadata[metadata['title'].str.lower().str.contains(keyword)]
+                if not matches.empty:
+                    sorted_matches = matches.sort_values(by=['vote_average', 'vote_count'], ascending=False)
+                    movie_id = sorted_matches.iloc[0]['movieId']
+                    if verbose:
+                        print(f"Coincidencia por palabra clave '{keyword}' encontrada para '{input_title}': {sorted_matches.iloc[0]['title']} (ID: {movie_id})")
+                    return movie_id
+    
+    # Si ninguna búsqueda encontró coincidencia
+    if verbose:
+        print(f"No se encontró ninguna coincidencia para '{input_title}'")
+    return None
+
+
 
 def add_diversity(recommendations, metadata, n_recommendations):
     """

@@ -4,8 +4,8 @@ import streamlit as st
 import os
 from src.data.loader import load_data
 from src.data.preprocessor import preprocess_data
-from src.recommenders.content_based import content_based_recommender
-from src.recommenders.collaborative import collaborative_recommender
+from src.recommenders.content_based import content_based_recommender, evaluate_content_based
+from src.recommenders.collaborative import collaborative_recommender, evaluate_model
 from src.recommenders.utils import get_poster_url
 
 # Configuración de la interfaz Streamlit
@@ -70,14 +70,18 @@ def load_and_preprocess_data():
     try:
         with st.spinner("Cargando datos, por favor espere..."):
             metadata, ratings, links = load_data(data_folder='dataset')
+
             if metadata is None or ratings is None or links is None:
                 st.error("Error crítico: No se pudieron cargar los archivos de datos.")
                 return None, None, None
+
             metadata, tfidf_matrix = preprocess_data(metadata, links)
+
             if metadata is None or tfidf_matrix is None:
                 st.error("Error crítico: Fallo en el preprocesamiento de datos.")
                 return None, None, None
             return metadata, ratings, tfidf_matrix
+
     except Exception as e:
         st.error(f"Error inesperado: {str(e)}")
         return None, None, None
@@ -90,6 +94,7 @@ def load_poster_cache():
         pd.DataFrame: DataFrame con columnas ['tmdbId', 'poster_url']
     """
     cache_file = 'poster_urls_cache.csv'
+    
     if os.path.exists(cache_file):
         return pd.read_csv(cache_file)
     return pd.DataFrame(columns=['tmdbId', 'poster_url'])
@@ -265,6 +270,15 @@ if submitted:
                     use_container_width=True,
                     hide_index=True
                 )
+
+            #Implementacion de pruebas
+            #metrics = evaluate_model(collaborative_recommender, ratings, metadata, k=10, n_users=100)
+            #metrics = evaluate_content_based(metadata, tfidf_matrix, content_based_recommender, n_recommendations=10, test_samples=50, k=10)
+            #print(metrics)
+
+
         except Exception as e:
             st.error(f"Error al generar recomendaciones: {str(e)}")
             st.error("Por favor intenta con otra película o reinicia la aplicación.")
+
+

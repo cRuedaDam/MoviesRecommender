@@ -80,7 +80,7 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
     )
     
     # 4. Factor proximidad temporal: Más cercanía en años da un factor más alto (0 a 1)
-    MAX_YEAR_DIFF = 10  # Diferencia máxima de años para considerar proximidad
+    MAX_YEAR_DIFF = 20  # Diferencia máxima de años para considerar proximidad
     filtered_df['year_proximity'] = filtered_df['release_year'].apply(
         lambda x: max(0, 1 - abs(x - movie_year) / MAX_YEAR_DIFF) if pd.notna(x) and pd.notna(movie_year) else 0.2
     )
@@ -110,6 +110,9 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
     LANGUAGE_WEIGHT = 0.05
     POPULARITY_WEIGHT = 0.1
     RATING_WEIGHT = 0.05
+
+    print("Maximo valor de 'similarity':")
+    print(filtered_df['similarity'].max())
     
     # Calcular score combinado para ranking final
     filtered_df['combined_score'] = (
@@ -137,3 +140,67 @@ def content_based_recommender(input_title, metadata, n_recommendations=10, tfidf
     
     print(f"Tiempo de ejecución de Content Based: {time.time() - start_time:.2f} segundos")
     return recommendations
+
+
+def evaluate_content_based(metadata, tfidf_matrix, content_based_recommender, n_recommendations=10, test_samples=5, k=10):
+    """
+    Evalúa el recomendador content_based usando un conjunto de prueba simple basado en género compartido.
+
+    Args:
+        metadata (pd.DataFrame): DataFrame con metadatos de películas.
+        tfidf_matrix (scipy.sparse.csr_matrix): Matriz TF-IDF usada para la similitud.
+        content_based_recommender (function): Función de recomendación que acepta (input_title, metadata, n_recommendations, tfidf_matrix).
+        n_recommendations (int): Número de recomendaciones a generar por película.
+        test_samples (int): Número de películas del conjunto de prueba a evaluar.
+        k (int): Valor para Precision@K y Recall@K.
+
+    Returns:
+        dict: Diccionario con métricas promedio Precision@K y Recall@K.
+    """
+
+    def precision_at_k(recommended, relevant, k):
+        recommended_at_k = recommended[:k]
+        return len(set(recommended_at_k).intersection(relevant)) / k
+
+    def recall_at_k(recommended, relevant, k):
+        recommended_at_k = recommended[:k]
+        if len(relevant) == 0:
+            return 0
+        return len(set(recommended_at_k).intersection(relevant)) / len(relevant)
+
+    precisions = []
+    recalls = []
+
+    # Seleccionar aleatoriamente películas de prueba
+    test_movies = metadata.sample(n=test_samples, random_state=42)
+
+    for _, row in test_movies.iterrows():
+        input_title = row['title']
+        input_genres = set(row['genres_list'])
+
+        # Definir películas relevantes: aquellas que comparten género con la de entrada, excluyendo la misma
+        relevant_movies = set(
+            metadata[
+                metadata['genres_list'].apply(lambda genres: len(input_genres.intersection(genres)) > 0) &
+                (metadata['title'] != input_title)
+            ]['title']
+        )
+
+        # Obtener recomendaciones
+        recs = content_based_recommender(input_title, metadata, n_recommendations=n_recommendations, tfidf_matrix=tfidf_matrix)
+        recommended_titles = [title for title, score in recs]
+
+        # Calcular métricas
+        prec = precision_at_k(recommended_titles, relevant_movies, k)
+        rec = recall_at_k(recommended_titles, relevant_movies, k)
+
+        precisions.append(prec)
+        recalls.append(rec)
+
+    avg_precision = sum(precisions) / len(precisions) if precisions else 0
+    avg_recall = sum(recalls) / len(recalls) if recalls else 0
+
+    return {
+        'Average Precision@K': avg_precision,
+        'Average Recall@K': avg_recall
+    }
