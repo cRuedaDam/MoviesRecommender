@@ -4,6 +4,7 @@ from ratelimit import limits, sleep_and_retry
 from dotenv import load_dotenv
 import os
 import random
+import re
 
 # Carga las variables de entorno desde un archivo .env
 load_dotenv()
